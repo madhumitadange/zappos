@@ -1,10 +1,12 @@
+//=============================================================================
+// Gathers data from Zappos API and uses it to find gift combinations.
+//
+// Kaitlin Huben, 10/27/13
+//=============================================================================
+package com.example.zapposestimate;
 
-package zapposEstimate;
-
-import static java.awt.image.ImageObserver.WIDTH;
 import java.io.*;
 import java.util.*;
-import javax.swing.JOptionPane;
 import org.json.simple.*;
 import org.json.simple.parser.*;
 
@@ -15,11 +17,15 @@ public class GiftSearcher {
 	private int page;				//page of results
 	private JSONArray products;		//products in range
 	private ArrayList<Product> productObjects; //JSON->Product list
-	private ArrayList<FindCombo> FindCombos; //list of product combos
+	private ArrayList<ProductCombo> productCombos; //list of product combos
 	private final double TOL = Math.pow(10, -7);  //tolerance for subtracting doubles
 	private final int MAXCOMBOS = 30;
 	
-	
+	/**
+	 * Constructs a new GiftSearcher
+	 * @param num The number of items to search for
+	 * @param total The maximum total price of combined items
+	 */
 	public GiftSearcher(int num, double total) {
 		numItems = num;
 		totalPrice = total;
@@ -27,15 +33,28 @@ public class GiftSearcher {
 		page = 1;					//will pull at least one page of results
 		products = new JSONArray();
 		productObjects = new ArrayList<Product>();
-		FindCombos = new ArrayList<FindCombo>();
+		productCombos = new ArrayList<ProductCombo>();
 	}
 	
-	
+	/**
+	 * Extracts the price as a double from a JSON product object
+	 * @param item The JSON Object product
+	 * @return The price as a double
+	 */
 	private Double getPrice(Object item){
 		return Double.parseDouble(((String) ((JSONObject) item).get("price")).substring(1));
 	}
 	
-	
+	/**
+	 * Gets all products that are within the feasible price range, given the  
+	 * number of items and the total price.
+	 * Only gets products up to (total - (numItems-1)*(min price)), since that's
+	 * the maximum amount.
+	 * @return The JSON array of objects in String format, or "" if (numItems)*(min price)
+	 * is greater than the total price
+	 * @throws IOException 
+	 * @throws ParseException
+	 */
 	@SuppressWarnings("unchecked")
 	private void setProductsInRange() throws IOException, ParseException {
 		//get maximum amount of products (100), starting at lowest price, and pull out results
@@ -82,7 +101,10 @@ public class GiftSearcher {
 		products = resultArray;
 	}
 	
-	
+	/**
+	 * Converts JSONObjects into Products, puts products in price range in
+	 * ArrayList to be sorted and searched
+	 */
 	private void setSearchableProducts() {
 		//add the first (smallest price) object
 		productObjects.add(new Product((JSONObject)products.get(0)));
@@ -112,13 +134,22 @@ public class GiftSearcher {
 		}
 	}
 
-	
-	private void setFindCombos() {
-		setFindCombosRecursive(productObjects, totalPrice, new ArrayList<Product>());
+	/**
+	 * Recursively finds the product combinations of numItems items within $1 of the totalPrice
+	 */
+	private void setProductCombos() {
+		setProductCombosRecursive(productObjects, totalPrice, new ArrayList<Product>());
 	}
 	
-	
-	private void setFindCombosRecursive(ArrayList<Product> productList, double target, ArrayList<Product> partial) {
+	/**
+	 * Finds the product combinations of numItems items with $1 of the totalPrice
+	 * A lot of inspiration from here:
+	 * http://stackoverflow.com/questions/4632322/finding-all-possible-combinations-of-numbers-to-reach-a-given-sum
+	 * @param productList The list of products to search
+	 * @param target The target to get near
+	 * @param partial The list of prices so far
+	 */
+	private void setProductCombosRecursive(ArrayList<Product> productList, double target, ArrayList<Product> partial) {
 		int priceWithinAmount = 1;
 		
 		//if partial size > numItems, you already have too many items, so stop
@@ -129,16 +160,16 @@ public class GiftSearcher {
 		
 		//if sum is within $1 of target, and partial size is numItems, and you don't already have too many product 
 		//combos, then add another product combo
-		if(Math.abs(sum - target) < priceWithinAmount && partial.size() == numItems && FindCombos.size() < MAXCOMBOS) {
+		if(Math.abs(sum - target) < priceWithinAmount && partial.size() == numItems && productCombos.size() < MAXCOMBOS) {
 			//if no price combos yet, just add it on
-			if(FindCombos.size() == 0) {	FindCombos.add(new FindCombo(partial, totalPrice)); }
+			if(productCombos.size() == 0) {	productCombos.add(new ProductCombo(partial, totalPrice)); }
 			//otherwise, check it against the most recent product combo to make sure you're not repeating
 			//TODO: check all product combos
 			else{
-				FindCombo testerCombo = FindCombos.get(FindCombos.size() -1);
-				FindCombo partialCombo = new FindCombo(partial, totalPrice);
+				ProductCombo testerCombo = productCombos.get(productCombos.size() -1);
+				ProductCombo partialCombo = new ProductCombo(partial, totalPrice);
 				if(!partialCombo.equals(testerCombo)) {
-					FindCombos.add(partialCombo);
+					productCombos.add(partialCombo);
 				}
 			}
 		}
@@ -154,35 +185,40 @@ public class GiftSearcher {
 			for(int j=i+1; j < productList.size(); j++) {remaining.add(productList.get(j)); }
 			ArrayList<Product> partial_rec = new ArrayList<Product>(partial);
 			partial_rec.add(n);
-			setFindCombosRecursive(remaining, target, partial_rec);
+			setProductCombosRecursive(remaining, target, partial_rec);
 		}
 	}
 	
-	
+	/**
+	 * Sorts product combinations from closest to totalPrice to furthest away
+	 */
 	@SuppressWarnings("unchecked")
-	private void sortFindCombos() {
-		Collections.sort(FindCombos);
+	private void sortProductCombos() {
+		Collections.sort(productCombos);
 	}
 	
-	
-	public String getGiftCombos() {
-            try{
+	/**
+	 * Returns the gift combinations that are closest to the total dollar amount
+	 * @throws IOException
+	 * @throws ParseException
+	 */
+	public String getGiftCombos() throws IOException, ParseException {
 		//get products from API
-		System.out.println("Searching....");
+		System.out.println("Searching Zappos...");
 		this.setProductsInRange();
 		
-		System.out.println("Finding combinations...");
+		System.out.println("Finding combinations that work for you...");
 		//convert to Products
 		this.setSearchableProducts();
 		//find combinations that work
-		this.setFindCombos();
+		this.setProductCombos();
 		//sort combos by how close they are to given total
-		this.sortFindCombos();
+		this.sortProductCombos();
 		
 		//see if you have any combos
-		if(FindCombos.size() != 0) {
+		if(productCombos.size() != 0) {
 			String toPrint = "\nDone!\n";
-			for(FindCombo x:FindCombos) {
+			for(ProductCombo x:productCombos) {
 				toPrint += x.toString() + "\n";
 			}
 			return toPrint;
@@ -191,13 +227,6 @@ public class GiftSearcher {
 			return "We couldn't find a set of items matching your criteria. " +
 					"Please try again with fewer items or a larger dollar amount.";
 		}
-	}catch(Exception e){
-            
-                            JOptionPane.showMessageDialog(null, "Something went wrong", "Error", WIDTH);
-	return null;		
-                        
-        }
-
-}
+	}
 	
 }

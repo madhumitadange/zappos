@@ -1,5 +1,9 @@
-
-package zapposEstimate;
+//=============================================================================
+// Represents a single Product
+//
+// Kaitlin Huben, 10/28/13
+//=============================================================================
+package com.example.zapposestimate;
 
 import org.json.simple.*;
 
